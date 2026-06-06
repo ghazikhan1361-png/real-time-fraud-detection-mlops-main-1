@@ -1,0 +1,91 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "fraud-detection-api"
+        IMAGE_TAG  = "v${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+
+        stage('Setup Python Environment') {
+            steps {
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Train Model') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    python3 model/train.py
+                '''
+            }
+        }
+
+        stage('Test API') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    python3 -c "
+import joblib
+model = joblib.load('model/fraud_model.pkl')
+scaler = joblib.load('model/scaler.pkl')
+print('Model loaded successfully')
+print('Model type:', type(model).__name__)
+print('Test passed!')
+"
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
+                echo "Docker image built: ${IMAGE_NAME}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh '''
+                    minikube image load fraud-detection-api:latest
+                    kubectl apply -f kubernetes/deployment.yaml
+                    kubectl apply -f kubernetes/service.yaml
+                    kubectl rollout status deployment/fraud-detection-deployment
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    kubectl get pods
+                    kubectl get svc
+                    echo "Deployment successful!"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline SUCCESS - Fraud Detection API deployed!"
+        }
+        failure {
+            echo "Pipeline FAILED - Check logs above"
+        }
+    }
+}
