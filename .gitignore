@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+data/
+*.zip
+*.csv
+mlruns/
+mlflow.db
+*.db
+*.pkl
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+*.so
